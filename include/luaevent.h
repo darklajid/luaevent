@@ -51,7 +51,7 @@
 #else
 #include <sys/time.h>
 #endif
-#include <event.h>
+#include <event2/event.h>
 
 typedef struct {
 	struct event_base* base;

@@ -21,6 +21,7 @@
    */
 
 #include <stdlib.h>
+#include <event2/buffer.h>
 #include "event_buffer.h"
 #include <lauxlib.h>
 
@@ -92,7 +93,7 @@ static int event_buffer_gc(lua_State* L) {
 static int event_buffer_add(lua_State* L) {
 	le_buffer* buf = event_buffer_check(L, 1);
 	struct evbuffer* buffer = buf->buffer;
-	int oldLength = EVBUFFER_LENGTH(buffer);
+	int oldLength = evbuffer_get_length(buffer);
 	int last = lua_gettop(L);
 	int i;
 	if(last == 1) luaL_error(L, "Not enough arguments to add: expects at least 1 additional operand");
@@ -117,7 +118,7 @@ static int event_buffer_add(lua_State* L) {
 				luaL_error(L, "Failed to move buffer-data to the buffer");
 		}
 	}
-	lua_pushinteger(L, EVBUFFER_LENGTH(buffer) - oldLength);
+	lua_pushinteger(L, evbuffer_get_length(buffer) - oldLength);
 	return 1;
 }
 
@@ -126,7 +127,7 @@ static int event_buffer_add(lua_State* L) {
 */
 static int event_buffer_get_length(lua_State* L) {
 	le_buffer* buf = event_buffer_check(L, 1);
-	lua_pushinteger(L, EVBUFFER_LENGTH(buf->buffer));
+	lua_pushinteger(L, evbuffer_get_length(buf->buffer));
 	return 1;
 }
 
@@ -146,13 +147,13 @@ static int event_buffer_get_data(lua_State* L) {
 	case 1:
 		/* Obtain full data */
 		begin = 0;
-		len = EVBUFFER_LENGTH(buf->buffer);
+		len = evbuffer_get_length(buf->buffer);
 		break;
 	case 2:
 		begin = 0;
 		len = luaL_checkinteger(L, 2);
-		if(len > EVBUFFER_LENGTH(buf->buffer))
-			len = EVBUFFER_LENGTH(buf->buffer);
+		if(len > evbuffer_get_length(buf->buffer))
+			len = evbuffer_get_length(buf->buffer);
 		break;
 	case 3:
 	default:
@@ -161,20 +162,20 @@ static int event_buffer_get_data(lua_State* L) {
 		 */
 		begin = luaL_checkinteger(L, 2);
 		if(begin < 0)
-			begin += EVBUFFER_LENGTH(buf->buffer);
+			begin += evbuffer_get_length(buf->buffer);
 		else
 			begin--;
 		len = luaL_checkinteger(L, 3);
 		/* If length is less than zero, capture entire remaining string */
 
-		if(len < 0) len = EVBUFFER_LENGTH(buf->buffer);
-		if(begin > EVBUFFER_LENGTH(buf->buffer))
-			begin = EVBUFFER_LENGTH(buf->buffer);
-		if(begin + len > EVBUFFER_LENGTH(buf->buffer))
-			len = EVBUFFER_LENGTH(buf->buffer) - begin;
+		if(len < 0) len = evbuffer_get_length(buf->buffer);
+		if(begin > evbuffer_get_length(buf->buffer))
+			begin = evbuffer_get_length(buf->buffer);
+		if(begin + len > evbuffer_get_length(buf->buffer))
+			len = evbuffer_get_length(buf->buffer) - begin;
 		break;
 	}
-	lua_pushlstring(L, (const char*)EVBUFFER_DATA(buf->buffer) + begin, len);
+	lua_pushlstring(L, (const char*)evbuffer_pullup(buf->buffer, -1) + begin, len);
 	return 1;
 }
 
@@ -185,7 +186,7 @@ static int event_buffer_get_data(lua_State* L) {
 */
 static int event_buffer_readline(lua_State* L) {
 	le_buffer* buf = event_buffer_check(L, 1);
-	char* line = evbuffer_readline(buf->buffer);
+	char* line = evbuffer_readln(buf->buffer, NULL, EVBUFFER_EOL_ANY);
 	if(!line)
 		return 0;
 	lua_pushstring(L, line);

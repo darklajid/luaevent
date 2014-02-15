@@ -43,7 +43,6 @@ void luaevent_callback(int fd, short event, void* p) {
 	lua_State* L;
 	int ret;
 	struct timeval new_tv = { 0, 0 };
-	le_base* base;
 	assert(cb);
 	if(!cb->base)
 		return; /* Event has already been collected + destroyed */
@@ -51,13 +50,11 @@ void luaevent_callback(int fd, short event, void* p) {
 	L = cb->base->loop_L;
 	lua_rawgeti(L, LUA_REGISTRYINDEX, cb->callbackRef);
 	lua_pushinteger(L, event);
-	/* cb->base may be NULL after the pcall, if the event is destroyed */
-	base = cb->base;
 	if(lua_pcall(L, 1, 2, 0))
 	{
-		base->errorMessage = luaL_ref(L, LUA_REGISTRYINDEX);
-		event_base_loopbreak(base->base);
-		lua_pop(L, 1);
+		cb->base->errorMessage = luaL_ref(L, LUA_REGISTRYINDEX);
+		event_base_loopbreak(cb->base->base);
+		lua_pop(L, 2);
 		return;
 	}
 	if(!cb->base) {
@@ -86,7 +83,8 @@ void luaevent_callback(int fd, short event, void* p) {
 			if(!cb->timeout.tv_sec && !cb->timeout.tv_usec)
 				ptv = NULL;
 			event_del(ev);
-			event_set(ev, fd, EV_PERSIST | newEvent, luaevent_callback, cb);
+			event_free(ev);
+			ev = event_new(cb->base->base, fd, EV_PERSIST | newEvent, luaevent_callback, cb);
 			/* Assume cannot set a new timeout.. */
 			event_add(ev, ptv);
 		}

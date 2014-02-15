@@ -20,6 +20,7 @@
    THE SOFTWARE.
    */
 
+#include <event2/bufferevent.h>
 #include "event_callback.h"
 #include "event_buffer.h"
 #include "buffer_event.h"
@@ -37,7 +38,7 @@ le_base* event_base_get(lua_State* L, int idx) {
 int luaevent_newbase(lua_State* L) {
 	le_base *base = (le_base*)lua_newuserdata(L, sizeof(le_base));
 	base->loop_L = NULL; /* No running loop */
-	base->base = event_init();
+	base->base = event_base_new();
 	luaL_getmetatable(L, EVENT_BASE_MT);
 	lua_setmetatable(L, -2);
 	return 1;
@@ -98,8 +99,7 @@ static int luaevent_addevent(lua_State* L) {
 	}
 
 	/* Setup event... */
-	event_set(&arg->ev, fd, event | EV_PERSIST, luaevent_callback, arg);
-	event_base_set(arg->base->base, &arg->ev);
+	arg->ev = *event_new(arg->base->base, fd, event | EV_PERSIST, luaevent_callback, arg);
 	event_add(&arg->ev, tv);
 	return 1;
 }
@@ -139,7 +139,7 @@ static int luaevent_method(lua_State* L) {
 		lua_pushstring(L, event_base_get_method(base->base));
 	else
 	#endif
-		lua_pushstring(L, event_get_method());
+		lua_pushstring(L, event_base_get_method(base->base));
 	return 1;
 }
 
@@ -170,11 +170,11 @@ static namedInteger consts[] = {
 	{"EV_SIGNAL", EV_SIGNAL},
 	{"EV_PERSIST", EV_PERSIST},
 	/* bufferevent */
-	{"EVBUFFER_READ", EVBUFFER_READ},
-	{"EVBUFFER_WRITE", EVBUFFER_WRITE},
-	{"EVBUFFER_EOF", EVBUFFER_EOF},
-	{"EVBUFFER_ERROR", EVBUFFER_ERROR},
-	{"EVBUFFER_TIMEOUT", EVBUFFER_TIMEOUT},
+	{"EVBUFFER_READ", BEV_EVENT_READING},
+	{"EVBUFFER_WRITE", BEV_EVENT_WRITING},
+	{"EVBUFFER_EOF", BEV_EVENT_EOF},
+	{"EVBUFFER_ERROR", BEV_EVENT_ERROR},
+	{"EVBUFFER_TIMEOUT", BEV_EVENT_TIMEOUT},
 	{NULL, 0}
 };
 
@@ -193,7 +193,6 @@ int luaopen_luaevent_core(lua_State* L) {
 	WSADATA wsaData;
 	WSAStartup(wVersionRequested, &wsaData);
 #endif
-	event_init( );
 	/* Setup metatable */
 	luaL_newmetatable(L, EVENT_BASE_MT);
 	lua_newtable(L);
@@ -203,8 +202,7 @@ int luaopen_luaevent_core(lua_State* L) {
 	lua_setfield(L, -2, "__gc");
 	lua_pop(L, 1);
 
-	lua_newtable(L);
-	luaL_register(L, NULL, funcs);
+	luaL_register(L, "luaevent.core", funcs);
 	setNamedIntegers(L, consts);
 
 	/* Register external items */

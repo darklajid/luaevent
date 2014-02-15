@@ -23,6 +23,8 @@
 #ifndef EVENT_CALLBACK
 #define EVENT_CALLBACK
 
+#include <event2/event.h>
+#include <event2/event_struct.h>
 #include "luaevent.h"
 
 typedef struct {

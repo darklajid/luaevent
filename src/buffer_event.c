@@ -21,9 +21,11 @@
    */
 
 #include <stdlib.h>
-#include "buffer_event.h"
+#include <event2/bufferevent.h>
+#include <event2/buffer.h>
 #include "utility.h"
 #include <lauxlib.h>
+#include "buffer_event.h"
 #include "event_buffer.h"
 
 #define BUFFER_EVENT_MT "BUFFER_EVENT_MT"
@@ -77,11 +79,11 @@ static void handle_callback(le_bufferevent* le_ev, short what, int callbackIndex
 }
 
 static void buffer_event_readcb(struct bufferevent *ev, void *ptr) {
-	handle_callback((le_bufferevent*)ptr, EVBUFFER_READ, 1);
+	handle_callback((le_bufferevent*)ptr, BEV_EVENT_READING, 1);
 }
 
 static void buffer_event_writecb(struct bufferevent *ev, void *ptr) {
-	handle_callback((le_bufferevent*)ptr, EVBUFFER_WRITE, 2);
+	handle_callback((le_bufferevent*)ptr, BEV_EVENT_WRITING, 2);
 }
 
 static void buffer_event_errorcb(struct bufferevent *ev, short what, void *ptr) {
@@ -104,7 +106,8 @@ static int buffer_event_push(lua_State* L) {
 	ev= (le_bufferevent*)lua_newuserdata(L, sizeof(le_bufferevent));
 	luaL_getmetatable(L, BUFFER_EVENT_MT);
 	lua_setmetatable(L, -2);
-	ev->ev = bufferevent_new(fd, buffer_event_readcb, buffer_event_writecb, buffer_event_errorcb, ev);
+	ev->ev = bufferevent_socket_new(base->base, fd, 0);
+	bufferevent_setcb(ev->ev, buffer_event_readcb, buffer_event_writecb, buffer_event_errorcb, ev);
 	lua_createtable(L, 5, 0);
 	lua_pushvalue(L, 3);
 	lua_rawseti(L, -2, 1); // Read
@@ -113,9 +116,9 @@ static int buffer_event_push(lua_State* L) {
 	lua_pushvalue(L, 5);
 	lua_rawseti(L, -2, 3); // Err
 
-	event_buffer_push(L, ev->ev->input);
+	event_buffer_push(L, bufferevent_get_input(ev->ev));
 	lua_rawseti(L, -2, READ_BUFFER_LOCATION);
-	event_buffer_push(L, ev->ev->output);
+	event_buffer_push(L, bufferevent_get_output(ev->ev));
 	lua_rawseti(L, -2, WRITE_BUFFER_LOCATION);
 	lua_setfenv(L, -2);
 	ev->base = base;
@@ -190,14 +193,16 @@ static int buffer_event_set_write_watermarks(lua_State* L) {
 }
 
 static int buffer_event_set_timeouts(lua_State* L) {
-	int timeout_read, timeout_write;
+	struct timeval timeout_read, timeout_write;
 	le_bufferevent* ev = buffer_event_get(L, 1);
 	if(!ev->ev) return 0;
 
-	timeout_read = lua_tointeger(L, 2);
-	timeout_write = lua_tointeger(L, 3);
+	timeout_read.tv_sec = lua_tointeger(L, 2);
+	timeout_read.tv_usec = 0;
+	timeout_write.tv_sec = lua_tointeger(L, 3);
+	timeout_write.tv_usec = 0;
 
-	bufferevent_settimeout(ev->ev, timeout_read, timeout_write);
+	bufferevent_set_timeouts(ev->ev, &timeout_read, &timeout_write);
 	return 0;
 }
 
